@@ -10,7 +10,6 @@ from cflib.utils import uri_helper
 
 # URI für die Drohne mit "05" am Ende
 URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E705')
-
 # Flugparameter
 DEFAULT_HEIGHT = 0.5  # Flughöhe in Metern
 RADIUS = 0.5  # Kreisradius in Metern
