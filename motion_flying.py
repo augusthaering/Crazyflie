@@ -8,7 +8,16 @@ from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.utils import uri_helper
 
 URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E705')
+<<<<<<< Updated upstream
 DEFAULT_HEIGHT = 0.5
+=======
+
+# Flugparameter
+DEFAULT_HEIGHT = 100.5  # Flughöhe um 100 erhöht
+RADIUS = 100.5  # Kreisradius um 100 erhöht
+STEPS = 20  # Anzahl der Punkte für den Kreis
+SPEED = 2  # Geschwindigkeit der Bewegung (höher = schneller)
+>>>>>>> Stashed changes
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -36,10 +45,11 @@ def stabilize_and_takeoff(scf):
     for _ in range(40):  # Langsam steigen für Stabilität
         scf.cf.commander.send_position_setpoint(0.0, 0.0, DEFAULT_HEIGHT, 0.0)
         time.sleep(0.1)
-
+    
     print("Hovering for 2 seconds...")
     time.sleep(2)  # Warten, bis sich die Drohne stabilisiert
 
+<<<<<<< Updated upstream
 def move_stably(scf):
     """ Führt langsame, kontrollierte Bewegungen aus """
     print("Moving to absolute position (0.5m, 0.5m)...")
@@ -48,6 +58,22 @@ def move_stably(scf):
         time.sleep(0.1)
 
     print("Hovering for 2 seconds...")
+=======
+def perform_circle_movement(scf):
+    """ Bewegt die Drohne in einer Kreisformation """
+    print(f"Performing a circular motion with radius {RADIUS}...")
+
+    for i in range(STEPS):
+        angle = (i / STEPS) * 2 * math.pi  # Winkel in Radiant
+        x = 100 + RADIUS * math.cos(angle)
+        y = 100 + RADIUS * math.sin(angle)
+
+        print(f"Moving to x={x:.2f}, y={y:.2f}, height={DEFAULT_HEIGHT}")
+        scf.cf.commander.send_position_setpoint(x, y, DEFAULT_HEIGHT, 0.0)
+        time.sleep(SPEED / STEPS)
+
+    print("Circle complete. Hovering for 2 seconds...")
+>>>>>>> Stashed changes
     time.sleep(2)
 
     print("Returning to start position")
@@ -61,7 +87,7 @@ def move_stably(scf):
 def land_safely(scf):
     """ Führt eine langsame Landung durch """
     print("Landing...")
-    for _ in range(40):  # Langsame Landung
+    for _ in range(40):
         scf.cf.commander.send_position_setpoint(0.0, 0.0, 0.1, 0.0)
         time.sleep(1)
 
@@ -70,15 +96,21 @@ def land_safely(scf):
 
 if __name__ == '__main__':
     cflib.crtp.init_drivers()
-
+    
     with SyncCrazyflie(URI, cf=Crazyflie(rw_cache='./cache')) as scf:
         scf.cf.platform.send_arming_request(True)
         time.sleep(1.0)
 
         if not check_lighthouse_system(scf):
             sys.exit(1)
-
+        
         stabilize_and_takeoff(scf)
+<<<<<<< Updated upstream
         move_stably(scf)
         land_safely(scf)
 
+=======
+        perform_circle_movement(scf)
+        return_to_start(scf)
+        land_safely(scf)
+>>>>>>> Stashed changes
