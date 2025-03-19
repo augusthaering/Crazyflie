@@ -1,116 +1,133 @@
+# -*- coding: utf-8 -*-
+#
+#     ||          ____  _ __
+#  +------+      / __ )(_) /_______________ _____  ___
+#  | 0xBC |     / __  / / __/ ___/ ___/ __ `/_  / / _ \
+#  +------+    / /_/ / / /_/ /__/ /  / /_/ / / /_/  __/
+#   ||  ||    /_____/_/\__/\___/_/   \__,_/ /___/\___/
+#
+#  Copyright (C) 2017 Bitcraze AB
+#
+#  Crazyflie Nano Quadcopter Client
+#
+#  This program is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either version 2
+#  of the License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 import logging
 import sys
 import time
+from threading import Event
 
 import cflib.crtp
 from cflib.crazyflie import Crazyflie
+from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
+from cflib.positioning.motion_commander import MotionCommander
 from cflib.utils import uri_helper
 
 URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E705')
-<<<<<<< Updated upstream
-DEFAULT_HEIGHT = 0.5
-=======
 
-# Flugparameter
-DEFAULT_HEIGHT = 100.5  # Flughöhe um 100 erhöht
-RADIUS = 100.5  # Kreisradius um 100 erhöht
-STEPS = 20  # Anzahl der Punkte für den Kreis
-SPEED = 2  # Geschwindigkeit der Bewegung (höher = schneller)
->>>>>>> Stashed changes
+DEFAULT_HEIGHT = 0.5
+BOX_LIMIT = 0.5
+
+deck_attached_event = Event()
 
 logging.basicConfig(level=logging.ERROR)
 
-def check_lighthouse_system(scf):
-    print("Checking Lighthouse V2 setup...")
-    
-    system_type = scf.cf.param.get_value("lighthouse.systemType")
-    print(f"Lighthouse system type: {system_type}")
-    
-    if int(system_type) == 2:
-        print("✅ Lighthouse V2 detected!")
-        return True
-    else:
-        print("❌ Lighthouse V2 NOT detected!")
-        return False
+position_estimate = [0, 0]
 
-def stabilize_and_takeoff(scf):
-    """ Initialisiert die Position und führt einen stabilen Takeoff durch """
-    print("Initializing position (0,0,0)...")
-    for _ in range(20):
-        scf.cf.extpos.send_extpos(0.0, 0.0, 0.0)
-        time.sleep(0.1)
 
-    print("Taking off to default height...")
-    for _ in range(40):  # Langsam steigen für Stabilität
-        scf.cf.commander.send_position_setpoint(0.0, 0.0, DEFAULT_HEIGHT, 0.0)
-        time.sleep(0.1)
-    
-    print("Hovering for 2 seconds...")
-    time.sleep(2)  # Warten, bis sich die Drohne stabilisiert
+def move_box_limit(scf):
+    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
+        body_x_cmd = 0.2
+        body_y_cmd = 0.1
+        max_vel = 0.2
 
-<<<<<<< Updated upstream
-def move_stably(scf):
-    """ Führt langsame, kontrollierte Bewegungen aus """
-    print("Moving to absolute position (0.5m, 0.5m)...")
-    for _ in range(50):  # Langsames Bewegen
-        scf.cf.commander.send_position_setpoint(20, 1, DEFAULT_HEIGHT, 0.0)
-        time.sleep(0.1)
+        while (1):
+            '''if position_estimate[0] > BOX_LIMIT:
+                mc.start_back()
+            elif position_estimate[0] < -BOX_LIMIT:
+                mc.start_forward()
+            '''
 
-    print("Hovering for 2 seconds...")
-=======
-def perform_circle_movement(scf):
-    """ Bewegt die Drohne in einer Kreisformation """
-    print(f"Performing a circular motion with radius {RADIUS}...")
+            if position_estimate[0] > BOX_LIMIT:
+                body_x_cmd = -max_vel
+            elif position_estimate[0] < -BOX_LIMIT:
+                body_x_cmd = max_vel
+            if position_estimate[1] > BOX_LIMIT:
+                body_y_cmd = -max_vel
+            elif position_estimate[1] < -BOX_LIMIT:
+                body_y_cmd = max_vel
 
-    for i in range(STEPS):
-        angle = (i / STEPS) * 2 * math.pi  # Winkel in Radiant
-        x = 100 + RADIUS * math.cos(angle)
-        y = 100 + RADIUS * math.sin(angle)
+            mc.start_linear_motion(body_x_cmd, body_y_cmd, 0)
 
-        print(f"Moving to x={x:.2f}, y={y:.2f}, height={DEFAULT_HEIGHT}")
-        scf.cf.commander.send_position_setpoint(x, y, DEFAULT_HEIGHT, 0.0)
-        time.sleep(SPEED / STEPS)
+            time.sleep(0.1)
 
-    print("Circle complete. Hovering for 2 seconds...")
->>>>>>> Stashed changes
-    time.sleep(2)
 
-    print("Returning to start position")
-    for _ in range(50):
-        scf.cf.commander.send_position_setpoint(0.0, 0.0, DEFAULT_HEIGHT, 0.0)
-        time.sleep(0.1)
-
-    print("Hovering for 2 seconds before landing...")
-    time.sleep(2)
-
-def land_safely(scf):
-    """ Führt eine langsame Landung durch """
-    print("Landing...")
-    for _ in range(40):
-        scf.cf.commander.send_position_setpoint(0.0, 0.0, 0.1, 0.0)
+def move_linear_simple(scf):
+    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
+        time.sleep(1)
+        mc.forward(0.5)
+        time.sleep(1)
+        mc.turn_left(180)
+        time.sleep(1)
+        mc.forward(0.5)
         time.sleep(1)
 
-    scf.cf.commander.send_stop_setpoint()
-    print("Landed safely.")
+
+def take_off_simple(scf):
+    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
+        time.sleep(3)
+        mc.stop()
+
+
+def log_pos_callback(timestamp, data, logconf):
+    print(data)
+    global position_estimate
+    position_estimate[0] = data['stateEstimate.x']
+    position_estimate[1] = data['stateEstimate.y']
+
+
+def param_deck_flow(_, value_str):
+    value = int(value_str)
+    print(value)
+    if value:
+        deck_attached_event.set()
+        print('Deck is attached!')
+    else:
+        print('Deck is NOT attached!')
+
 
 if __name__ == '__main__':
     cflib.crtp.init_drivers()
-    
+
     with SyncCrazyflie(URI, cf=Crazyflie(rw_cache='./cache')) as scf:
-        scf.cf.platform.send_arming_request(True)
-        time.sleep(1.0)
 
-        if not check_lighthouse_system(scf):
+        scf.cf.param.add_update_callback(group='deck', name='bcFlow2',
+                                         cb=param_deck_flow)
+        time.sleep(1)
+
+        logconf = LogConfig(name='Position', period_in_ms=10)
+        logconf.add_variable('stateEstimate.x', 'float')
+        logconf.add_variable('stateEstimate.y', 'float')
+        scf.cf.log.add_config(logconf)
+        logconf.data_received_cb.add_callback(log_pos_callback)
+
+        if not deck_attached_event.wait(timeout=5):
+            print('No flow deck detected!')
             sys.exit(1)
-        
-        stabilize_and_takeoff(scf)
-<<<<<<< Updated upstream
-        move_stably(scf)
-        land_safely(scf)
 
-=======
-        perform_circle_movement(scf)
-        return_to_start(scf)
-        land_safely(scf)
->>>>>>> Stashed changes
+        logconf.start()
+
+        take_off_simple(scf)
+        # move_linear_simple(scf)
+        # move_box_limit(scf)
+        logconf.stop()
