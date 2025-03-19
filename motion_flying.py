@@ -1,7 +1,6 @@
 import logging
 import sys
 import time
-import math
 
 import cflib.crtp
 from cflib.crazyflie import Crazyflie
@@ -13,9 +12,9 @@ URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E705')
 
 # Flugparameter
 DEFAULT_HEIGHT = 0.5  # Flughöhe in Metern
-RADIUS = 0.5  # Kreisradius in Metern
-STEPS = 20  # Anzahl der Punkte für den Kreis
-SPEED = 2  # Geschwindigkeit der Bewegung (höher = schneller)
+MOVEMENT_DISTANCE = 0.5  # Maximale Bewegung nach links/rechts in Metern
+STEPS = 5  # Anzahl der Links-Rechts-Bewegungen
+SPEED = 1  # Geschwindigkeit der Bewegung (höher = schneller)
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -48,24 +47,18 @@ def stabilize_and_takeoff(scf):
     print("Hovering for 2 seconds...")
     time.sleep(2)  # Warten, bis sich die Drohne stabilisiert
 
-def perform_circle_movement(scf):
-    """ Bewegt die Drohne in einer Kreisformation """
-    print(f"Performing a circular motion with radius {RADIUS}m...")
+def left_right_movement(scf):
+    """ Bewegt die Drohne abwechselnd nach links und rechts """
+    print(f"Performing left-right movement ({STEPS} cycles)...")
 
     for i in range(STEPS):
-        angle = (i / STEPS) * 2 * math.pi  # Winkel in Radiant
-        x = RADIUS * math.cos(angle)
-        y = RADIUS * math.sin(angle)
+        direction = -1 if i % 2 == 0 else 1  # Abwechselnd -1 (links) und 1 (rechts)
+        x = direction * MOVEMENT_DISTANCE  # Setzt x auf -0.5 oder +0.5
 
-        print(f"Moving to x={x:.2f}, y={y:.2f}, height={DEFAULT_HEIGHT}")
-        scf.cf.commander.send_position_setpoint(x, y, DEFAULT_HEIGHT, 0.0)
-        time.sleep(SPEED / STEPS)
+        print(f"Moving to x={x:.2f}, y=0.0, height={DEFAULT_HEIGHT}")
+        scf.cf.commander.send_position_setpoint(x, 0.0, DEFAULT_HEIGHT, 0.0)
+        time.sleep(SPEED)
 
-    print("Circle complete. Hovering for 2 seconds...")
-    time.sleep(2)
-
-def return_to_start(scf):
-    """ Rückkehr zur Startposition """
     print("Returning to start position (0,0)...")
     for _ in range(40):
         scf.cf.commander.send_position_setpoint(0.0, 0.0, DEFAULT_HEIGHT, 0.0)
@@ -95,6 +88,5 @@ if __name__ == '__main__':
             sys.exit(1)
 
         stabilize_and_takeoff(scf)
-        perform_circle_movement(scf)
-        return_to_start(scf)
+        left_right_movement(scf)
         land_safely(scf)
