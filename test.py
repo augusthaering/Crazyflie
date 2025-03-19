@@ -1,2 +1,1 @@
-import cflib.crtp
-cflib.crtp.init_drivers()
+python -c "import cflib.crtp; cflib.crtp.init_drivers(); print('Crazyradio Scan gestartet')"
