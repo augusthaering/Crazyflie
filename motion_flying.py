@@ -1,63 +1,103 @@
+# -*- coding: utf-8 -*-
 import logging
 import sys
 import time
+from threading import Event
 
 import cflib.crtp
 from cflib.crazyflie import Crazyflie
+from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
+from cflib.positioning.motion_commander import MotionCommander
 from cflib.utils import uri_helper
 
-# URI für die Drohne mit "05" am Ende
-URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E705')
+URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E706')
 
-# Flugparameter
-DEFAULT_HEIGHT = 0.5  # Flughöhe in Metern
+DEFAULT_HEIGHT = 0.5
+BOX_LIMIT = 0.5
+
+lighthouse_ready_event = Event()
 
 logging.basicConfig(level=logging.ERROR)
 
-def check_lighthouse_system(scf):
-    """ Überprüft, ob das Lighthouse V2 Tracking aktiv ist """
-    print("Checking Lighthouse V2 setup...")
+position_estimate = [0, 0]
 
-    system_type = scf.cf.param.get_value("lighthouse.systemType")
-    print(f"Lighthouse system type: {system_type}")
 
-    if int(system_type) == 2:
-        print("✅ Lighthouse V2 detected!")
-        return True
-    else:
-        print("❌ Lighthouse V2 NOT detected!")
-        return False
+def move_box_limit(scf):
+    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
+        body_x_cmd = 0.2
+        body_y_cmd = 0.1
+        max_vel = 0.2
 
-def takeoff_and_hover(scf):
-    """ Hebt auf 0,5m ab und schwebt für 5 Sekunden """
-    print("Taking off to default height...")
-    for _ in range(40):  # Langsam steigen für Stabilität
-        scf.cf.commander.send_position_setpoint(0.0, 0.0, DEFAULT_HEIGHT, 0.0)
-        time.sleep(0.1)
+        while True:
+            if position_estimate[0] > BOX_LIMIT:
+                body_x_cmd = -max_vel
+            elif position_estimate[0] < -BOX_LIMIT:
+                body_x_cmd = max_vel
+            if position_estimate[1] > BOX_LIMIT:
+                body_y_cmd = -max_vel
+            elif position_estimate[1] < -BOX_LIMIT:
+                body_y_cmd = max_vel
 
-    print("Hovering for 5 seconds...")
-    time.sleep(5)
+            mc.start_linear_motion(body_x_cmd, body_y_cmd, 0)
+            time.sleep(0.1)
 
-def land_safely(scf):
-    """ Führt eine langsame Landung durch """
-    print("Landing...")
-    for _ in range(40):  # Langsame Landung
-        scf.cf.commander.send_position_setpoint(0.0, 0.0, 0.1, 0.0)
+
+def move_linear_simple(scf):
+    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
+        time.sleep(1)
+        mc.forward(0.5)
+        time.sleep(1)
+        mc.turn_left(180)
+        time.sleep(1)
+        mc.forward(0.5)
         time.sleep(1)
 
-    scf.cf.commander.send_stop_setpoint()
-    print("Landed safely.")
+
+def take_off_simple(scf):
+    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
+        time.sleep(3)
+        mc.stop()
+
+
+def log_pos_callback(timestamp, data, logconf):
+    print(data)
+    global position_estimate
+    position_estimate[0] = data['stateEstimate.x']
+    position_estimate[1] = data['stateEstimate.y']
+
+
+def param_deck_lighthouse(_, value_str):
+    value = int(value_str)
+    if value:
+        lighthouse_ready_event.set()
+        print('Lighthouse deck is attached!')
+    else:
+        print('Lighthouse deck is NOT attached!')
+
 
 if __name__ == '__main__':
     cflib.crtp.init_drivers()
 
     with SyncCrazyflie(URI, cf=Crazyflie(rw_cache='./cache')) as scf:
-        scf.cf.platform.send_arming_request(True)
-        time.sleep(1.0)
 
-        if not check_lighthouse_system(scf):
+        scf.cf.param.add_update_callback(group='deck', name='bcLighthouse4',
+                                         cb=param_deck_lighthouse)
+        time.sleep(1)
+
+        logconf = LogConfig(name='Position', period_in_ms=10)
+        logconf.add_variable('stateEstimate.x', 'float')
+        logconf.add_variable('stateEstimate.y', 'float')
+        scf.cf.log.add_config(logconf)
+        logconf.data_received_cb.add_callback(log_pos_callback)
+
+        if not lighthouse_ready_event.wait(timeout=5):
+            print('No lighthouse deck detected!')
             sys.exit(1)
 
-        takeoff_and_hover(scf)
-        land_safely(scf)
+        logconf.start()
+
+        take_off_simple(scf)
+        # move_linear_simple(scf)
+        # move_box_limit(scf)
+        logconf.stop()
