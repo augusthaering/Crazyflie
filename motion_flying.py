@@ -8,96 +8,121 @@ import cflib.crtp
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
-from cflib.positioning.motion_commander import MotionCommander
 from cflib.utils import uri_helper
 
 URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E706')
+DEFAULT_HEIGHT = 0.7
 
-DEFAULT_HEIGHT = 0.5
-BOX_LIMIT = 0.5
-
-lighthouse_ready_event = Event()
-
+deck_attached_event = Event()
 logging.basicConfig(level=logging.ERROR)
-
-position_estimate = [0, 0]
-
-
-def move_box_limit(scf):
-    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
-        body_x_cmd = 0.2
-        body_y_cmd = 0.1
-        max_vel = 0.2
-
-        while True:
-            if position_estimate[0] > BOX_LIMIT:
-                body_x_cmd = -max_vel
-            elif position_estimate[0] < -BOX_LIMIT:
-                body_x_cmd = max_vel
-            if position_estimate[1] > BOX_LIMIT:
-                body_y_cmd = -max_vel
-            elif position_estimate[1] < -BOX_LIMIT:
-                body_y_cmd = max_vel
-
-            mc.start_linear_motion(body_x_cmd, body_y_cmd, 0)
-            time.sleep(0.1)
-
-
-def move_linear_simple(scf):
-    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
-        time.sleep(1)
-        mc.forward(0.5)
-        time.sleep(1)
-        mc.turn_left(180)
-        time.sleep(1)
-        mc.forward(0.5)
-        time.sleep(1)
-
-
-def take_off_simple(scf):
-    with MotionCommander(scf, default_height=DEFAULT_HEIGHT) as mc:
-        time.sleep(3)
-        mc.stop()
+position_estimate = [0, 0, 0]
 
 
 def log_pos_callback(timestamp, data, logconf):
-    print(data)
     global position_estimate
     position_estimate[0] = data['stateEstimate.x']
     position_estimate[1] = data['stateEstimate.y']
+    position_estimate[2] = data['stateEstimate.z']
+    print(f'{position_estimate[0]:.2f} {position_estimate[1]:.2f} {position_estimate[2]:.2f}')
 
 
 def param_deck_lighthouse(_, value_str):
     value = int(value_str)
     if value:
-        lighthouse_ready_event.set()
-        print('Lighthouse deck is attached!')
+        deck_attached_event.set()
+        print('[INFO] Lighthouse V2 deck is attached!')
     else:
-        print('Lighthouse deck is NOT attached!')
+        print('[WARN] Lighthouse V2 deck is NOT attached!')
+
+
+def wait_for_estimator(cf):
+    print('[INFO] Waiting for estimator to stabilize...')
+    logconf = LogConfig(name='Kalman', period_in_ms=100)
+    logconf.add_variable('kalman.varPX', 'float')
+    logconf.add_variable('kalman.varPY', 'float')
+    logconf.add_variable('kalman.varPZ', 'float')
+
+    ready_event = Event()
+
+    def est_callback(ts, data, logconf):
+        if all(data[k] < 0.001 for k in data):
+            ready_event.set()
+
+    cf.log.add_config(logconf)
+    logconf.data_received_cb.add_callback(est_callback)
+    logconf.start()
+
+    if not ready_event.wait(10):
+        print('[WARN] Estimator did not stabilize in time')
+    else:
+        print('[OK] Estimator is stable')
+
+    logconf.stop()
+
+
+def fly_to_fixed_position(cf):
+    print('[INFO] Flying to fixed position (1.0, 1.0, 0.7)...')
+
+    cf.param.set_value('commander.enHighLevel', '1')
+    time.sleep(0.1)
+
+    cf.high_level_commander.takeoff(0.7, 2.0)
+    time.sleep(3)
+
+    cf.high_level_commander.go_to(1.0, 1.0, 0.7, 0.0, 3.0)
+    print('[ACTION] Holding position...')
+    time.sleep(5)
+
+    print('[ACTION] Landing...')
+    cf.high_level_commander.land(0.0, 2.0)
+    time.sleep(3)
 
 
 if __name__ == '__main__':
+    print('[START] Init drivers...')
     cflib.crtp.init_drivers()
 
-    with SyncCrazyflie(URI, cf=Crazyflie(rw_cache='./cache')) as scf:
+    print('[START] Connecting...')
+    try:
+        with SyncCrazyflie(URI, cf=Crazyflie()) as scf:
+            print('[OK] Connected.')
 
-        scf.cf.param.add_update_callback(group='deck', name='bcLighthouse4',
-                                         cb=param_deck_lighthouse)
-        time.sleep(1)
+            scf.cf.platform.send_arming_request(True)
+            time.sleep(1)
 
-        logconf = LogConfig(name='Position', period_in_ms=10)
-        logconf.add_variable('stateEstimate.x', 'float')
-        logconf.add_variable('stateEstimate.y', 'float')
-        scf.cf.log.add_config(logconf)
-        logconf.data_received_cb.add_callback(log_pos_callback)
+            print('[INFO] Registering param callback...')
+            scf.cf.param.add_update_callback(group='deck', name='bcLighthouse4',
+                                             cb=param_deck_lighthouse)
+            time.sleep(1)
 
-        if not lighthouse_ready_event.wait(timeout=5):
-            print('No lighthouse deck detected!')
-            sys.exit(1)
+            print('[INFO] Setting up position logging...')
+            pos_logconf = LogConfig(name='Position', period_in_ms=100)
+            pos_logconf.add_variable('stateEstimate.x', 'float')
+            pos_logconf.add_variable('stateEstimate.y', 'float')
+            pos_logconf.add_variable('stateEstimate.z', 'float')
+            scf.cf.log.add_config(pos_logconf)
+            pos_logconf.data_received_cb.add_callback(log_pos_callback)
+            pos_logconf.start()
 
-        logconf.start()
+            print('[INFO] Waiting for Lighthouse deck...')
+            try:
+                attached = int(scf.cf.param.get_value('deck.bcLighthouse4')) == 1
+            except KeyError:
+                attached = False
 
-        take_off_simple(scf)
-        # move_linear_simple(scf)
-        # move_box_limit(scf)
-        logconf.stop()
+            if attached:
+                print('[INFO] Lighthouse V2 deck is attached!')
+            else:
+                print('[WARN] Lighthouse V2 deck not reported via param')
+
+            wait_for_estimator(scf.cf)
+            fly_to_fixed_position(scf.cf)
+
+            print('[INFO] Stopping logging...')
+            pos_logconf.stop()
+
+    except Exception as e:
+        print(f'[FATAL] Failed: {e}')
+        sys.exit(1)
+
+    print('[END] Script done.')
