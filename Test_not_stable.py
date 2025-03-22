@@ -1,3 +1,10 @@
+
+
+# umfrangreiche Bewegung der Drohnen
+# funktioniert nicht wirklich
+# # die Grenzen liegen außerhalb des Erkennungsfeld des Lighthouse Systems
+
+
 import logging
 import sys
 import time
@@ -8,12 +15,12 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.utils import uri_helper
 
-URI1 = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E706')
+URI1 = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E704')
 URI2 = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E708')
 
 HEIGHT_1 = 0.7
 HEIGHT_2 = 0.6
-MOVE_DURATION = 0.07
+MOVE_DURATION = 1
 MOVE_STEPS = 80
 
 logging.basicConfig(level=logging.ERROR)
@@ -69,31 +76,46 @@ def flight_routine(scf, start, waypoints, height, repeat=1):
             current = target
     return current
 
+def flight_routine(scf, start, waypoints, repeat=1):
+    stabilize_and_takeoff(scf, start[0], start[1], start[2])
+    current = start
+    for _ in range(repeat):
+        for x, y, z in waypoints:
+            target = (x, y, z)
+            fly_to_position(scf, current, target)
+            hover(scf, x, y, z)
+            current = target
+    return current
+
 def fly_simultaneously(scf1, scf2):
-    start_pos_1 = (0.0, 0.0)
-    start_pos_2 = (1.0, 0.0)
+    start_pos_1 = (0.5, 0.0, 1.0)
+    start_pos_2 = (1.5, 0.0, 1.0)
 
     waypoints_1 = [
-        (1.0, 0.0),
-        (1.0, -1.0),
-        (0.0, -1.0),
-        (0.0, 0.0),
+        (1.0, 0.0, 1.0),
+        (1.5, -0.5, 1.3),
+        (1.0, -1.0, 1.1),
+        (0.5, -0.5, 0.9),
+        (0.0, -1.0, 1.2),
+        (0.0, 0.0, 1.0),
     ]
 
     waypoints_2 = [
-        (1.0, -1.0),
-        (0.0, -1.0),
-        (0.0, 0.0),
-        (1.0, 0.0),
+        (1.0, 0.0, 0.9),
+        (0.5, -0.5, 1.2),
+        (1.0, -1.0, 1.0),
+        (1.5, -0.5, 1.4),
+        (2.0, -1.0, 1.2),
+        (2.0, 0.0, 1.0),
     ]
 
     result = {}
 
     def routine1():
-        result['end1'] = flight_routine(scf1, start_pos_1, waypoints_1, HEIGHT_1, repeat=3)
+        result['end1'] = flight_routine(scf1, start_pos_1, waypoints_1, repeat=2)
 
     def routine2():
-        result['end2'] = flight_routine(scf2, start_pos_2, waypoints_2, HEIGHT_2, repeat=3)
+        result['end2'] = flight_routine(scf2, start_pos_2, waypoints_2, repeat=2)
 
     thread1 = threading.Thread(target=routine1)
     thread2 = threading.Thread(target=routine2)
@@ -103,8 +125,9 @@ def fly_simultaneously(scf1, scf2):
     thread1.join()
     thread2.join()
 
-    return result['end1'], HEIGHT_1, result['end2'], HEIGHT_2
+    return result['end1'], result['end2']
 
+# Hauptteil anpassen:
 if __name__ == '__main__':
     cflib.crtp.init_drivers()
     with SyncCrazyflie(URI1, cf=Crazyflie(rw_cache='./cache')) as scf1, \
@@ -116,9 +139,9 @@ if __name__ == '__main__':
         if not check_lighthouse_system(scf1) or not check_lighthouse_system(scf2):
             sys.exit(1)
 
-        end1, h1, end2, h2 = fly_simultaneously(scf1, scf2)
+        end1, end2 = fly_simultaneously(scf1, scf2)
 
-        land(scf1, end1[0], end1[1], h1)
-        land(scf2, end2[0], end2[1], h2)
+        land(scf1, end1[0], end1[1], end1[2])
+        land(scf2, end2[0], end2[1], end2[2])
 
         print("Both drones have completed their routines.")

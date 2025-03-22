@@ -1,4 +1,10 @@
-# -*- coding: utf-8 -*-
+
+#  funktioniert und fliegt hoch und landet, aber ohne positionserekennung
+# 1 Drohne
+
+
+
+
 import logging
 import sys
 import time

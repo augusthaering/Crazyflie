@@ -1,3 +1,8 @@
+
+# von dem Tutorial
+# Logging Test
+
+
 import logging
 import time
 

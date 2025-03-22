@@ -1,3 +1,10 @@
+
+# 3 Drohnen
+# funktioniert nicht ganz, Positionsdaten sind zu nah an der Wand etc.
+
+
+
+
 import logging
 import sys
 import time

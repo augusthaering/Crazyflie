@@ -1,4 +1,9 @@
-# -*- coding: utf-8 -*-
+
+
+# von dem Tutorial
+# funktioniert NICHT 
+
+
 import logging
 import sys
 import time

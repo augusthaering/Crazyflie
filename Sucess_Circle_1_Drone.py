@@ -1,3 +1,10 @@
+
+# Kreisformation
+# 1 Drohne
+# Kreis ist zu klein um ihn zu erkennen
+
+
+
 import logging
 import sys
 import time
