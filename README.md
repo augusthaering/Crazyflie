@@ -1,4 +1,3 @@
-# Crazyflie 2.1 Brushless Drone Swarm – Technical README
 
 ## Overview
 This project implements a drone swarm using the **Crazyflie 2.1 Brushless** system by Bitcraze. The swarm is controlled via Python scripts using the **CFlight** client and tracked with **Lighthouse V2** base stations.
